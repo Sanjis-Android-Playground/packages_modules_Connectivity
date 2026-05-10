@@ -69,8 +69,6 @@ import android.os.Build;
 import android.os.Process;
 import android.os.ServiceSpecificException;
 import android.os.UserHandle;
-import android.system.ErrnoException;
-import android.system.Os;
 import android.util.Pair;
 
 import androidx.annotation.RequiresApi;
@@ -213,18 +211,29 @@ public class BpfNetMapsUtils {
             final IBpfMap<S32, U32> configurationMap, final int chain) {
         throwIfPreT("isChainEnabled is not available on pre-T devices");
 
-        if (configurationMap == null) return false;
+        if (configurationMap == null) {
+            android.util.Log.w("BpfNetMapsUtils",
+                    "configurationMap null, disabling firewall chain");
+            return false;
+        }
 
         final long match = getMatchByFirewallChain(chain);
+
         try {
             final U32 config = configurationMap.getValue(UID_RULES_CONFIGURATION_KEY);
+
+            if (config == null) {
+                return false;
+            }
+
             return (config.val & match) != 0;
-        } catch (ErrnoException e) {
-            throw new ServiceSpecificException(e.errno,
-                    "Unable to get firewall chain status: " + Os.strerror(e.errno));
+
+        } catch (Throwable e) {
+            android.util.Log.w("BpfNetMapsUtils",
+                    "Unable to get firewall chain status, assuming disabled");
+            return false;
         }
     }
-
     /**
      * Get firewall rule of specified firewall chain on specified uid.
      *
@@ -240,17 +249,28 @@ public class BpfNetMapsUtils {
             final int chain, final int uid) {
         throwIfPreT("getUidRule is not available on pre-T devices");
 
-        if (uidOwnerMap == null) return FIREWALL_RULE_ALLOW;
+        if (uidOwnerMap == null) {
+            return FIREWALL_RULE_ALLOW;
+        }
 
         final long match = getMatchByFirewallChain(chain);
         final boolean isAllowList = isFirewallAllowList(chain);
+
         try {
             final UidOwnerValue uidMatch = uidOwnerMap.getValue(new S32(uid));
-            final boolean isMatchEnabled = uidMatch != null && (uidMatch.rule & match) != 0;
-            return isMatchEnabled == isAllowList ? FIREWALL_RULE_ALLOW : FIREWALL_RULE_DENY;
-        } catch (ErrnoException e) {
-            throw new ServiceSpecificException(e.errno,
-                    "Unable to get uid rule status: " + Os.strerror(e.errno));
+
+            final boolean isMatchEnabled =
+                    uidMatch != null && (uidMatch.rule & match) != 0;
+
+            return isMatchEnabled == isAllowList
+                    ? FIREWALL_RULE_ALLOW
+                    : FIREWALL_RULE_DENY;
+
+        } catch (Throwable e) {
+            android.util.Log.w("BpfNetMapsUtils",
+                    "Unable to get uid rule, defaulting to ALLOW");
+
+            return FIREWALL_RULE_ALLOW;
         }
     }
 
@@ -278,7 +298,10 @@ public class BpfNetMapsUtils {
             final UidOwnerValue value = uidOwnerMap.getValue(new Struct.S32(uid));
             uidMatch = (value != null) ? value.rule : 0L;
         } catch (Throwable e) {
-            android.util.Log.e("BpfNetMapsUtils", "Unable to get firewall chain status");
+            android.util.Log.w("BpfNetMapsUtils",
+                    "Firewall unavailable, ignoring BPF");
+
+            return BLOCKED_REASON_NONE;
         }
         final long blockingMatches = (uidRuleConfig & ~uidMatch & sMaskDropIfUnset)
                 | (uidRuleConfig & uidMatch & sMaskDropIfSet);
@@ -370,12 +393,21 @@ public class BpfNetMapsUtils {
     public static boolean getDataSaverEnabled(IBpfMap<S32, U8> dataSaverEnabledMap) {
         throwIfPreT("getDataSaverEnabled is not available on pre-T devices");
 
-        if (dataSaverEnabledMap == null) return false;
+        if (dataSaverEnabledMap == null) {
+            return false;
+        }
+
         try {
-            return dataSaverEnabledMap.getValue(DATA_SAVER_ENABLED_KEY).val == DATA_SAVER_ENABLED;
-        } catch (ErrnoException e) {
-            throw new ServiceSpecificException(e.errno, "Unable to get data saver: "
-                    + Os.strerror(e.errno));
+            final U8 value = dataSaverEnabledMap.getValue(DATA_SAVER_ENABLED_KEY);
+
+            if (value == null) {
+                return false;
+            }
+
+            return value.val == DATA_SAVER_ENABLED;
+        } catch (Throwable e) {
+            android.util.Log.w("BpfNetMapsUtils", "Unable to get data saver state");
+            return false;
         }
     }
 }

@@ -678,13 +678,38 @@ public class NetworkStatsService extends INetworkStatsService.Stub {
         mInterfaceMapHelper = mDeps.makeBpfInterfaceMapHelper();
         try {
             mUidCounterSetMap = mDeps.getUidCounterSetMap();
+        } catch (Throwable t) {
+            android.util.Log.e("PHH", "UidCounterSetMap unavailable", t);
+        }
+
+        try {
             mCookieTagMap = mDeps.getCookieTagMap();
+        } catch (Throwable t) {
+            android.util.Log.e("PHH", "CookieTagMap unavailable", t);
+        }
+
+        try {
             mStatsMapA = mDeps.getStatsMapA();
+        } catch (Throwable t) {
+            android.util.Log.e("PHH", "StatsMapA unavailable", t);
+        }
+
+        try {
             mStatsMapB = mDeps.getStatsMapB();
+        } catch (Throwable t) {
+            android.util.Log.e("PHH", "StatsMapB unavailable", t);
+        }
+
+        try {
             mAppUidStatsMap = mDeps.getAppUidStatsMap();
+        } catch (Throwable t) {
+            android.util.Log.e("PHH", "AppUidStatsMap unavailable", t);
+        }
+
+        try {
             mIfaceStatsMap = mDeps.getIfaceStatsMap();
-        } catch(Throwable t) {
-            android.util.Log.e("PHH", "Failed creating bpf maps", t);
+        } catch (Throwable t) {
+            android.util.Log.e("PHH", "IfaceStatsMap unavailable", t);
         }
         // To prevent any possible races, the flag is not allowed to change until rebooting.
         mSupportEventLogger = mDeps.supportEventLogger(mContext);
@@ -702,13 +727,18 @@ public class NetworkStatsService extends INetworkStatsService.Stub {
                 mDeps.enabledBroadcastNetworkStatsUpdatedRateLimiting(mContext);
 
         mSkDestroyListener = mDeps.makeSkDestroyListener((message) -> {
+            if (mCookieTagMap == null) return;
+
             final StructInetDiagSockId sockId = message.inetDiagMsg.id;
+
             try {
                 mCookieTagMap.deleteEntry(new S64(sockId.cookie));
             } catch (ErrnoException e) {
-                Log.e(TAG, "Failed to delete CookieTagMap entry for " + sockId.cookie  + ": " + e);
+                Log.e(TAG, "Failed to delete CookieTagMap entry for "
+                        + sockId.cookie + ": " + e);
             }
         }, mHandler);
+
         mHandler.post(mSkDestroyListener::start);
     }
 
@@ -868,7 +898,7 @@ public class NetworkStatsService extends INetworkStatsService.Stub {
             try {
                 return new BpfMap<>(UID_COUNTERSET_MAP_PATH, S32.class, U8.class);
             } catch (ErrnoException e) {
-                Log.wtf(TAG, "Cannot open uid counter set map: " + e);
+                Log.e(TAG, "Cannot open uid counter set map: " + e);
                 return null;
             }
         }
@@ -879,7 +909,7 @@ public class NetworkStatsService extends INetworkStatsService.Stub {
                 return new BpfMap<>(COOKIE_TAG_MAP_PATH,
                         S64.class, CookieTagMapValue.class);
             } catch (ErrnoException e) {
-                Log.wtf(TAG, "Cannot open cookie tag map: " + e);
+                Log.e(TAG, "Cannot open cookie tag map: " + e);
                 return null;
             }
         }
@@ -889,7 +919,7 @@ public class NetworkStatsService extends INetworkStatsService.Stub {
             try {
                 return new BpfMap<>(STATS_MAP_A_PATH, StatsMapKey.class, StatsMapValue.class);
             } catch (ErrnoException e) {
-                Log.wtf(TAG, "Cannot open stats map A: " + e);
+                Log.e(TAG, "Cannot open stats map A: " + e);
                 return null;
             }
         }
@@ -899,7 +929,7 @@ public class NetworkStatsService extends INetworkStatsService.Stub {
             try {
                 return new BpfMap<>(STATS_MAP_B_PATH, StatsMapKey.class, StatsMapValue.class);
             } catch (ErrnoException e) {
-                Log.wtf(TAG, "Cannot open stats map B: " + e);
+                Log.e(TAG, "Cannot open stats map B: " + e);
                 return null;
             }
         }
@@ -910,7 +940,7 @@ public class NetworkStatsService extends INetworkStatsService.Stub {
                 return new BpfMap<>(APP_UID_STATS_MAP_PATH,
                         S32.class, StatsMapValue.class);
             } catch (ErrnoException e) {
-                Log.wtf(TAG, "Cannot open app uid stats map: " + e);
+                Log.e(TAG, "Cannot open app uid stats map: " + e);
                 return null;
             }
         }
