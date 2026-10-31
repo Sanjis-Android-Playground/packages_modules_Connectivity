@@ -84,7 +84,7 @@ static void verifyPerms(const char * const path,
       case VERIFY_MAP_RW: fd = bpf::mapRetrieveLocklessRW(path); break;
     }
 
-    if (fd < 0) ALOGF("bpf_obj_get '%s' failed, errno=%d", path, errno);
+    if (fd < 0) ALOGE("bpf_obj_get '%s' failed, errno=%d", path, errno);
 
     if (fd >= 0) close(fd);
 }
@@ -134,12 +134,18 @@ static void verifyClatPerms() {
 
     // HACK: Some old vendor kernels lack ~5.10 backport of 'bpffs selinux genfscon' support.
     // This is *NOT* supported, but let's allow, at least for now, to make 16 QPR2 boot on them.
-    if (!bpf::isAtLeastKernelVersion(5, 10, 0)) {
-        ALOGW("Kernel < 5.10 detected, skipping CLAT perms for legacy kernel.");
+    // Use the real uname() version here: ro.bpf.kver_override may advertise a fake
+    // >= 5.10 kernel to unlock backported BPF features, but it says nothing about
+    // whether bpffs selinux genfscon support is actually present.
+    if (!bpf::isAtLeastRealKernelVersion(5, 10, 0)) {
+        ALOGW("Real kernel < 5.10, skipping CLAT perms for legacy kernel.");
         return;
     }
 
-    if (fatal) abort();
+    // A verification failure must never abort system_server: this runs from
+    // JNI_OnLoad, so aborting turns a missing-CLAT-BPF condition into a boot
+    // loop.  On BPF-less kernels the CLAT programs/maps are simply not pinned.
+    if (fatal) ALOGW("CLAT BPF verification failed, continuing with CLAT disabled.");
 }
 
 #undef V

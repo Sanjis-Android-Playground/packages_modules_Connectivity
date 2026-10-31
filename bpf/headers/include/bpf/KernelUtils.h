@@ -48,6 +48,21 @@ static inline unsigned __unused kernelVersion() {
     return kernelVer;
 }
 
+// Like uncachedKernelVersion(), but always reads the real kernel version from
+// uname() and ignores ro.bpf.kver_override.  Needed by sanity checks (such as
+// CLAT's bpffs genfscon verification) that must reason about the kernel that is
+// actually running rather than the version we pretend to be for BPF features.
+static inline bool isAtLeastRealKernelVersion(unsigned major, unsigned minor, unsigned sub = 0) {
+    struct utsname buf;
+    if (uname(&buf)) return true;
+
+    unsigned kver_major = 0;
+    unsigned kver_minor = 0;
+    unsigned kver_sub = 0;
+    if (sscanf(buf.release, "%u.%u.%u", &kver_major, &kver_minor, &kver_sub) < 2) return true;
+    return KVER(kver_major, kver_minor, kver_sub) >= KVER(major, minor, sub);
+}
+
 #ifndef __ANDROID_API__
     #error "__ANDROID_API__ is not defined"
 #endif
